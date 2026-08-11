@@ -1,0 +1,10 @@
++ PACKAGE CompositePrimaryKey
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/COMPOSITE.SPEC.TSV
++ GROUP OrderLineFacts
+    FROM OrderLine
+    GROUP_BY OrderLineKey
++ PROPERTY PublishedAmount
+    AT OrderLineFacts
+    AS OrderLine.Amount
+

@@ -1,0 +1,18 @@
++ PACKAGE CrossGroupHaving
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP TransactionFacts
+    FROM Transaction
+    GROUP_BY TransactionKey
++ PROPERTY IsQualifying
+    AT TransactionFacts
+    AS Transaction.IsQualifyingSale
++ GROUP CustomerFacts
+    FROM Transaction
+    JOIN TransactionCustomer
+    GROUP_BY CustomerKey
+    HAVING IsQualifying
++ PROPERTY CustomerRevenue
+    AT CustomerFacts
+    AS SUM(Transaction.NetSales)
+

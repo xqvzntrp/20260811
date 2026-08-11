@@ -1,0 +1,11 @@
++ PACKAGE InvalidOneToOne
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/INVALID-ONE-TO-ONE.SPEC.TSV
++ GROUP Q
+    FROM Contact
+    JOIN ContactAccount
+    GROUP_BY AccountKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Contact.ContactId)
+

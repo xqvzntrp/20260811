@@ -1,0 +1,22 @@
+// This package has no dependencies outside its own directory.
++ PACKAGE StarterRevenue
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE starter.spec.tsv
+
++ GROUP TransactionFacts
+    FROM Transaction
+    GROUP_BY TransactionKey
+
++ PROPERTY NetSales
+    AT TransactionFacts
+    AS Transaction.NetSales
+
++ GROUP RevenueByCustomer
+    FROM Transaction
+    JOIN TransactionCustomer
+    WHERE Transaction.IsQualifyingSale
+    GROUP_BY CustomerKey
+
++ PROPERTY TotalNetSales
+    AT RevenueByCustomer
+    AS SUM(Transaction.NetSales)

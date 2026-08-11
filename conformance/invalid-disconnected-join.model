@@ -1,0 +1,11 @@
++ PACKAGE DisconnectedJoin
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/FANOUT.SPEC.TSV
++ GROUP InvalidPath
+    FROM OrderRow
+    JOIN TicketCustomer
+    GROUP_BY OrderKey
++ PROPERTY Amount
+    AT InvalidPath
+    AS OrderRow.Amount
+

@@ -1,0 +1,10 @@
++ PACKAGE UnsupportedVersion
+    LANGUAGE_VERSION 9999.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP Q
+    FROM Transaction
+    GROUP_BY TransactionKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Transaction.TransactionId)
+

@@ -1,0 +1,14 @@
+// Intentionally invalid: every order would be repeated for every ticket of a customer.
++ PACKAGE UnsafeRevenueWithTickets
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE fanout.spec.tsv
+
++ GROUP CustomerActivity
+    FROM Customer
+    JOIN OrderCustomer
+    JOIN TicketCustomer
+    GROUP_BY CustomerKey
+
++ PROPERTY TotalOrderAmount
+    AT CustomerActivity
+    AS SUM(OrderRow.Amount)

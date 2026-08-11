@@ -1,0 +1,10 @@
++ PACKAGE MissingPrimaryKey
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/MISSING-KEY.SPEC.TSV
++ GROUP Q
+    FROM Item
+    GROUP_BY ItemKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Item.Name)
+

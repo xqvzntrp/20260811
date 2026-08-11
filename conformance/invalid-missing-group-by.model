@@ -1,0 +1,9 @@
++ PACKAGE MissingGroup
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP Q
+    FROM Transaction
++ PROPERTY C
+    AT Q
+    AS COUNT(Transaction.TransactionId)
+

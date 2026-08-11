@@ -1,0 +1,11 @@
++ PACKAGE UnsafeJoin
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/UNSAFE.SPEC.TSV
++ GROUP Q
+    FROM LeftSide
+    JOIN Unsafe
+    GROUP_BY RightKey
++ PROPERTY C
+    AT Q
+    AS COUNT(LeftSide.LeftId)
+

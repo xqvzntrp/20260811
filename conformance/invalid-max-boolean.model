@@ -1,0 +1,10 @@
++ PACKAGE MaximumBoolean
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/ORDERED.SPEC.TSV
++ GROUP Values
+    FROM ValueRow
+    GROUP_BY ValueKey
++ PROPERTY InvalidMaximum
+    AT Values
+    AS MAX(ValueRow.Flag)
+

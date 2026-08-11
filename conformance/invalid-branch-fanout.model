@@ -1,0 +1,12 @@
++ PACKAGE BranchFanout
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/FANOUT.SPEC.TSV
++ GROUP CustomerActivity
+    FROM Customer
+    JOIN OrderCustomer
+    JOIN TicketCustomer
+    GROUP_BY CustomerKey
++ PROPERTY Revenue
+    AT CustomerActivity
+    AS SUM(OrderRow.Amount)
+

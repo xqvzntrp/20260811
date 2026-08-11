@@ -1,0 +1,11 @@
++ PACKAGE WhereType
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP Q
+    FROM Transaction
+    WHERE Transaction.NetSales
+    GROUP_BY TransactionKey
++ PROPERTY A
+    AT Q
+    AS Transaction.NetSales
+

@@ -1,0 +1,32 @@
+// Business authoring uses named groups and properties.
+// Structural identity comes from the explicit TSV specification.
++ PACKAGE CustomerRevenue
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
+
+// The complete Transaction primary key creates singleton groups. Therefore
+// Transaction.NetSales is functionally determined without an aggregate.
++ GROUP TransactionFacts
+    FROM Transaction
+    GROUP_BY TransactionKey
+
++ PROPERTY PublishedNetSales
+    AT TransactionFacts
+    AS Transaction.NetSales
+
+// The Customer primary key creates one output group for each customer.
++ GROUP RevenueByCustomer
+    FROM Transaction
+    JOIN TransactionCustomer
+    WHERE Transaction.IsQualifyingSale
+    GROUP_BY CustomerKey
+    ORDER_BY TotalNetSales
+
++ PROPERTY TotalNetSales
+    AT RevenueByCustomer
+    AS SUM(Transaction.NetSales)
+
++ PROPERTY QualifyingTransactionCount
+    AT RevenueByCustomer
+    AS COUNT(Transaction.TransactionId)
+

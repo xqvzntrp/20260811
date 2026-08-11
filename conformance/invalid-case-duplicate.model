@@ -1,0 +1,10 @@
++ PACKAGE CaseDuplicate
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/DUPLICATE.SPEC.TSV
++ GROUP Q
+    FROM Thing
+    GROUP_BY ThingKey
++ PROPERTY A
+    AT Q
+    AS Thing.Id
+

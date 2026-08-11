@@ -1,0 +1,18 @@
++ PACKAGE CrossGroupOrder
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP TransactionFacts
+    FROM Transaction
+    GROUP_BY TransactionKey
++ PROPERTY TransactionAmount
+    AT TransactionFacts
+    AS Transaction.NetSales
++ GROUP CustomerFacts
+    FROM Transaction
+    JOIN TransactionCustomer
+    GROUP_BY CustomerKey
+    ORDER_BY TransactionAmount
++ PROPERTY CustomerRevenue
+    AT CustomerFacts
+    AS SUM(Transaction.NetSales)
+

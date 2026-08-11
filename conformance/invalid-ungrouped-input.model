@@ -1,0 +1,11 @@
++ PACKAGE UngroupedInput
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE spec/COMMERCE.SPEC.TSV
++ GROUP Q
+    FROM Transaction
+    JOIN TransactionCustomer
+    GROUP_BY CustomerKey
++ PROPERTY RawAmount
+    AT Q
+    AS Transaction.NetSales
+

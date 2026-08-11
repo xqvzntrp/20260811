@@ -1,0 +1,11 @@
++ PACKAGE NoncontiguousFk
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/NONCONTIGUOUS-FK.SPEC.TSV
++ GROUP Q
+    FROM Child
+    JOIN ChildParent
+    GROUP_BY ParentKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Child.ChildId)
+

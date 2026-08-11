@@ -1,0 +1,13 @@
+// One customer has many orders. Aggregating order amount at customer grain is safe.
++ PACKAGE FanoutSafeRevenue
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE fanout.spec.tsv
+
++ GROUP RevenueByCustomer
+    FROM Customer
+    JOIN OrderCustomer
+    GROUP_BY CustomerKey
+
++ PROPERTY TotalOrderAmount
+    AT RevenueByCustomer
+    AS SUM(OrderRow.Amount)

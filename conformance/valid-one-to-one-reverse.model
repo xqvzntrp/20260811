@@ -1,0 +1,11 @@
++ PACKAGE OneToOneReverse
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/ONE-TO-ONE.SPEC.TSV
++ GROUP PersonPassport
+    FROM Person
+    JOIN PassportPerson
+    GROUP_BY PersonKey
++ PROPERTY PassportIdentity
+    AT PersonPassport
+    AS Passport.PersonId
+

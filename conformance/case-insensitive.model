@@ -1,0 +1,13 @@
++ package CaseInsensitive
+    language_version 2004.0.0
+    spec_file spec/commerce.spec.tsv
+
++ group AmountByCustomer
+    from transaction
+    join transactioncustomer
+    group_by customerkey
+
++ property TotalAmount
+    at amountbycustomer
+    as sum(transaction.netsales)
+

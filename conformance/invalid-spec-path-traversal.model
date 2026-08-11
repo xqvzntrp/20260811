@@ -1,0 +1,10 @@
++ PACKAGE PathTraversal
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE ../milestone-2002/spec/COMMERCE.SPEC.TSV
++ GROUP Q
+    FROM Transaction
+    GROUP_BY TransactionKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Transaction.TransactionId)
+

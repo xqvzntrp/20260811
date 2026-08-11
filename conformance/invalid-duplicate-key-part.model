@@ -1,0 +1,10 @@
++ PACKAGE DuplicateKeyPart
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/DUPLICATE-KEY-PART.SPEC.TSV
++ GROUP Q
+    FROM Item
+    GROUP_BY ItemKey
++ PROPERTY C
+    AT Q
+    AS COUNT(Item.ItemId)
+

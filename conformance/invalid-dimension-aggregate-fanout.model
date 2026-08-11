@@ -1,0 +1,11 @@
++ PACKAGE DimensionFanout
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/FANOUT.SPEC.TSV
++ GROUP CustomerAttributes
+    FROM OrderRow
+    JOIN OrderCustomer
+    GROUP_BY CustomerKey
++ PROPERTY SummedCreditLimit
+    AT CustomerAttributes
+    AS SUM(Customer.CreditLimit)
+
