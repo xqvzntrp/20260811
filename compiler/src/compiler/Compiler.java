@@ -1,11 +1,9 @@
 package compiler;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -19,11 +17,8 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 public final class Compiler {
-    private static final LocalDateTime ZIP_TIME = LocalDateTime.of(1980, 1, 1, 0, 0);
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Z_][A-Z0-9_]*");
     private static final Pattern QUALIFIED = Pattern.compile("[A-Z_][A-Z0-9_]*\\.[A-Z_][A-Z0-9_]*");
     private static final Pattern AGGREGATE = Pattern.compile("([A-Z_][A-Z0-9_]*)\\(([^()]+)\\)");
@@ -38,7 +33,7 @@ public final class Compiler {
     private static final Set<String> ORDERED_TYPES = Set.of(
             "#IDENTIFIER", "#STRING", "#NUMBER", "#DATE");
 
-    private record Location(String file, int line) {
+    static record Location(String file, int line) {
         String prefix() { return file + ":" + line + ": "; }
     }
 
@@ -46,8 +41,8 @@ public final class Compiler {
                             String object, Location location) {}
     private record Profile(String relation, Set<String> subjectKinds, String role,
                            Set<String> constraints, int min, int max, Location location) {}
-    private record Model(List<Assertion> assertions, Map<String, String> kinds) {}
-    private record Compilation(Model authored, SpecCatalog spec, Model combined, Path specPath,
+    static record Model(List<Assertion> assertions, Map<String, String> kinds) {}
+    static record Compilation(Model authored, SpecCatalog spec, Model combined, Path specPath,
                                String languageVersion) {}
     private record KeyPart(int position, String table, String column, Location location) {}
     private record ForeignPart(int position, String fromTable, String fromColumn,
@@ -89,16 +84,20 @@ public final class Compiler {
                 System.out.println("VALID " + spec.model.assertions.size() + " SPEC ASSERTIONS");
                 return;
             }
-            if (args.length < 2) throw new ModelError("USAGE", "Compiler validate|compile|emit_sql|export MODEL [OUTPUT]");
+            if (args.length < 2) throw new ModelError("USAGE", "Compiler validate|compile|explain|emit_sql|export MODEL [OUTPUT]");
             Path source = Path.of(args[1]);
             Path root = locateRoot(source.toAbsolutePath());
             Compilation compilation = validate(root, source);
             switch (upper(args[0])) {
                 case "VALIDATE" -> System.out.println("VALID " + compilation.combined.assertions.size() + " ASSERTIONS");
                 case "COMPILE" -> System.out.print(render(compilation.combined.assertions));
+                case "EXPLAIN" -> {
+                    if (args.length != 2) throw new ModelError("USAGE", "EXPLAIN accepts MODEL");
+                    System.out.print(explain(compilation));
+                }
                 case "EMIT_SQL" -> {
                     if (args.length > 3) throw new ModelError("USAGE", "EMIT_SQL accepts MODEL [OUTPUT]");
-                    String sql = emitPostgresSql(compilation);
+                    String sql = PostgresEmitter.emit(compilation);
                     if (args.length == 3) {
                         Path output = Path.of(args[2]);
                         Path parent = output.toAbsolutePath().getParent();
@@ -111,7 +110,7 @@ public final class Compiler {
                 }
                 case "EXPORT" -> {
                     if (args.length != 3) throw new ModelError("USAGE", "EXPORT requires an output ZIP path");
-                    export(root, source, Path.of(args[2]), compilation);
+                    ExportWriter.write(root, source, Path.of(args[2]), compilation);
                     System.out.println("EXPORTED " + Path.of(args[2]).toAbsolutePath());
                 }
                 default -> throw new ModelError("USAGE", "Unknown command: " + args[0]);
@@ -134,7 +133,7 @@ public final class Compiler {
     }
 
     private static Compilation validate(Path root, Path source) throws IOException {
-        Model authored = parseBlocks(source);
+        Model authored = ModelParser.parse(source);
         String supportedVersion = Files.readString(root.resolve("VERSION"), StandardCharsets.UTF_8).trim();
         Assertion languageVersion = singleAssertion(authored, "PACKAGE", "LANGUAGE_VERSION");
         if (!languageVersion.object.equals(upper(supportedVersion))) {
@@ -171,54 +170,6 @@ public final class Compiler {
             current = matches.get(0);
         }
         return current.normalize();
-    }
-
-    private static Model parseBlocks(Path source) throws IOException {
-        List<Assertion> assertions = new ArrayList<>();
-        Map<String, String> kinds = new LinkedHashMap<>();
-        Set<String> exact = new HashSet<>();
-        String active = null;
-        String packageId = null;
-        int ordinal = 10;
-        int lineNumber = 0;
-        for (String raw : Files.readAllLines(source, StandardCharsets.UTF_8)) {
-            lineNumber++;
-            Location location = new Location(source.getFileName().toString(), lineNumber);
-            int comment = raw.indexOf("//");
-            String line = (comment >= 0 ? raw.substring(0, comment) : raw).trim();
-            if (line.isEmpty()) continue;
-            if (line.startsWith("+")) {
-                String[] p = line.substring(1).trim().split("\\s+", 2);
-                if (p.length != 2) throw error("INVALID_SUBJECT_INTRODUCTION", location, "Expected + KIND SUBJECT");
-                String kind = identifier(p[0], "kind", location);
-                String subject = identifier(p[1], "subject", location);
-                if (kinds.putIfAbsent(subject, kind) != null) {
-                    throw error("DUPLICATE_SUBJECT", location, "Subject already introduced: " + subject);
-                }
-                if (packageId == null) {
-                    if (!kind.equals("PACKAGE")) throw error("PACKAGE_REQUIRED_FIRST", location, "The first subject must be PACKAGE");
-                    packageId = subject;
-                } else if (kind.equals("PACKAGE")) {
-                    throw error("MULTIPLE_PACKAGES", location, "A model contains exactly one PACKAGE");
-                }
-                active = subject;
-                assertions.add(new Assertion(packageId, ordinal, subject, "KIND", kind, location));
-                exact.add(subject + "\u0000KIND\u0000" + kind);
-                ordinal += 10;
-            } else {
-                if (active == null) throw error("ORPHAN_ASSERTION", location, "Assertion precedes a subject");
-                String[] p = line.split("\\s+", 2);
-                if (p.length != 2) throw error("INVALID_ASSERTION", location, "Expected RELATION OBJECT");
-                String relation = identifier(p[0], "relation", location);
-                String object = upper(p[1]);
-                String key = active + "\u0000" + relation + "\u0000" + object;
-                if (!exact.add(key)) throw error("DUPLICATE_ASSERTION", location, "Duplicate assertion");
-                assertions.add(new Assertion(packageId, ordinal, active, relation, object, location));
-                ordinal += 10;
-            }
-        }
-        if (packageId == null) throw new ModelError("PACKAGE_REQUIRED", source.getFileName() + ": model has no PACKAGE");
-        return new Model(List.copyOf(assertions), Map.copyOf(kinds));
     }
 
     private static SpecSchema loadSpecSchema(Path path) throws IOException {
@@ -599,42 +550,29 @@ public final class Compiler {
         for (String group : ix.subjects("GROUP")) {
             Assertion fromAssertion = ix.oneAssertion(group, "FROM");
             String fromTable = fromAssertion.object;
-            JoinState state = new JoinState();
-            state.tables.add(fromTable);
-            state.rowKeys.add(spec.primaryKeyByTable.get(fromTable));
+            JoinProof state = new JoinProof(fromTable, spec.primaryKeyByTable.get(fromTable));
 
             for (Assertion joinAssertion : ix.assertions(group, "JOIN")) {
                 String fk = joinAssertion.object;
                 String from = ix.one(fk, "FROM_TABLE");
                 String to = ix.one(fk, "TO_TABLE");
                 String cardinality = ix.one(fk, "CARDINALITY");
-                boolean hasFrom = state.tables.contains(from);
-                boolean hasTo = state.tables.contains(to);
-                if (hasFrom && hasTo) throw error("AMBIGUOUS_TABLE_ROLE", joinAssertion,
+                boolean hasFrom = state.hasTable(from);
+                boolean hasTo = state.hasTable(to);
+                if (state.revisits(from, to)) throw error("AMBIGUOUS_TABLE_ROLE", joinAssertion,
                         fk + " revisits tables already present in " + group
                                 + "; aliases and role-playing joins are not yet modeled");
-                if (!hasFrom && !hasTo) throw error("DISCONNECTED_JOIN", joinAssertion,
+                if (state.isDisconnected(from, to)) throw error("DISCONNECTED_JOIN", joinAssertion,
                         fk + " does not connect to the established row space of " + group);
 
                 String fromKey = spec.primaryKeyByTable.get(from);
                 String toKey = spec.primaryKeyByTable.get(to);
-                state.addDependency(fromKey, toKey);
-                if (cardinality.equals("#ONE_TO_ONE")) state.addDependency(toKey, fromKey);
-
-                if (hasFrom) {
-                    state.tables.add(to); // Forward many-to-one/one-to-one preserves row identity.
-                } else {
-                    state.tables.add(from);
-                    if (cardinality.equals("#MANY_TO_ONE")) {
-                        // Reverse traversal is one-to-many and introduces the many-side identity.
-                        state.rowKeys.add(fromKey);
-                    }
-                }
+                state.join(from, fromKey, to, toKey, cardinality);
             }
 
             Set<String> availableColumns = new HashSet<>();
             for (String column : ix.subjects("COLUMN")) {
-                if (state.tables.contains(ix.one(column, "TABLE"))) availableColumns.add(column);
+                if (state.hasTable(ix.one(column, "TABLE"))) availableColumns.add(column);
             }
             for (Assertion where : ix.assertions(group, "WHERE")) {
                 requireAvailable(availableColumns, group, where);
@@ -647,9 +585,10 @@ public final class Compiler {
             for (Assertion groupBy : ix.assertions(group, "GROUP_BY")) {
                 if (!groupKeys.add(groupBy.object)) throw error("DUPLICATE_GROUP_KEY", groupBy,
                         groupBy.object + " appears more than once");
-                if (!state.closure(state.rowKeys).contains(groupBy.object)) {
+                if (!state.canGroupBy(groupBy.object)) {
                     throw error("GROUP_KEY_NOT_DETERMINED", groupBy,
-                            groupBy.object + " is not functionally determined by joined row identity " + state.rowKeys);
+                            groupBy.object + " is not functionally determined by joined row identity "
+                                    + state.effectiveRowKeys());
                 }
             }
 
@@ -676,38 +615,17 @@ public final class Compiler {
         }
     }
 
-    private static final class JoinState {
-        final Set<String> tables = new LinkedHashSet<>();
-        final Set<String> rowKeys = new LinkedHashSet<>();
-        final Map<String, Set<String>> dependencies = new HashMap<>();
-        void addDependency(String determinant, String dependent) {
-            dependencies.computeIfAbsent(determinant, ignored -> new LinkedHashSet<>()).add(dependent);
-        }
-
-        Set<String> closure(Set<String> determinants) {
-            Set<String> closure = new LinkedHashSet<>(determinants);
-            boolean changed;
-            do {
-                changed = false;
-                for (Map.Entry<String, Set<String>> dependency : dependencies.entrySet()) {
-                    if (closure.contains(dependency.getKey())) changed |= closure.addAll(dependency.getValue());
-                }
-            } while (changed);
-            return closure;
-        }
-    }
-
     private static final class PropertyChecker {
         final Index ix;
         final String group;
         final Set<String> columns;
         final Set<String> groupKeys;
-        final JoinState state;
+        final JoinProof state;
         final Map<String, String> primaryKeyByTable;
         final Map<PropertyScope, String> cache;
 
         PropertyChecker(Index ix, String group, Set<String> columns, Set<String> groupKeys,
-                        JoinState state, Map<String, String> primaryKeyByTable,
+                        JoinProof state, Map<String, String> primaryKeyByTable,
                         Map<PropertyScope, String> cache) {
             this.ix = ix;
             this.group = group;
@@ -734,12 +652,8 @@ public final class Compiler {
                 requireColumn(input, as);
                 String sourceTable = ix.one(input, "TABLE");
                 String sourceKey = primaryKeyByTable.get(sourceTable);
-                Set<String> determinant = new LinkedHashSet<>(groupKeys);
-                determinant.add(sourceKey);
-                Set<String> closure = state.closure(determinant);
-                if (!closure.containsAll(state.rowKeys)) {
-                    Set<String> uncontrolled = new LinkedHashSet<>(state.rowKeys);
-                    uncontrolled.removeAll(closure);
+                if (!state.aggregateIsSafe(groupKeys, sourceKey)) {
+                    Set<String> uncontrolled = state.uncontrolledKeys(groupKeys, sourceKey);
                     throw error("AGGREGATE_FANOUT", as, property + " aggregates " + input
                             + " after join expansion by " + uncontrolled
                             + "; the same source fact may occur more than once per output group");
@@ -792,7 +706,7 @@ public final class Compiler {
         }
     }
 
-    private static final class Index {
+    static final class Index {
         final Model model;
         final Map<String, Map<String, List<Assertion>>> assertions = new HashMap<>();
 
@@ -839,7 +753,7 @@ public final class Compiler {
         return values.get(0);
     }
 
-    private static String render(List<Assertion> assertions) {
+    static String render(List<Assertion> assertions) {
         StringBuilder out = new StringBuilder("PACKAGE_ID\tORDINAL\tSUBJECT\tRELATION\tOBJECT\n");
         for (Assertion assertion : assertions) {
             out.append(assertion.packageId).append('\t').append(assertion.ordinal).append('\t')
@@ -849,106 +763,33 @@ public final class Compiler {
         return out.toString();
     }
 
-    /** Emits deterministic PostgreSQL-compatible SQL from an already validated model. */
-    private static String emitPostgresSql(Compilation compilation) {
-        Index ix = new Index(compilation.combined);
-        StringBuilder sql = new StringBuilder("-- Generated PostgreSQL SQL for ")
-                .append(ix.subjects("PACKAGE").iterator().next()).append('\n');
-        for (String group : ix.subjects("GROUP")) {
-            List<String> groupColumns = new ArrayList<>();
-            List<String> select = new ArrayList<>();
-            for (String key : ix.values(group, "GROUP_BY")) {
-                List<String> parts = ix.values(key, "KEY_PART");
-                for (String part : parts) {
-                    groupColumns.add(part);
-                    String alias = parts.size() == 1 ? key : key + "_" + part.substring(part.indexOf('.') + 1);
-                    select.add(part + " AS " + alias);
-                }
-            }
+    private static String explain(Compilation compilation) {
+        return """
+                01 LOAD CONTRACTS
+                   Loaded the model schema and structural-specification schema.
 
-            Map<String, String> propertyExpressions = new LinkedHashMap<>();
-            for (String property : ix.subjects("PROPERTY")) {
-                if (!ix.one(property, "AT").equals(group)) continue;
-                String expression = ix.one(property, "AS");
-                propertyExpressions.put(property, expression);
-                select.add(expression + " AS " + property);
-            }
+                02 LOAD MODEL
+                   Loaded the model and its referenced structural specification.
 
-            sql.append('\n').append("-- ").append(group).append('\n')
-                    .append("SELECT\n    ").append(String.join(",\n    ", select)).append('\n')
-                    .append("FROM ").append(ix.one(group, "FROM")).append('\n');
-            Set<String> tables = new LinkedHashSet<>();
-            tables.add(ix.one(group, "FROM"));
-            for (Assertion join : ix.assertions(group, "JOIN")) {
-                String foreignKey = join.object;
-                String from = ix.one(foreignKey, "FROM_TABLE");
-                String to = ix.one(foreignKey, "TO_TABLE");
-                String introduced = tables.contains(from) ? to : from;
-                List<String> fromColumns = ix.values(foreignKey, "FROM_COLUMN");
-                List<String> toColumns = ix.values(foreignKey, "TO_COLUMN");
-                List<String> predicates = new ArrayList<>();
-                for (int i = 0; i < fromColumns.size(); i++) {
-                    predicates.add(fromColumns.get(i) + " = " + toColumns.get(i));
-                }
-                sql.append("JOIN ").append(introduced).append(" ON ")
-                        .append(String.join(" AND ", predicates)).append('\n');
-                tables.add(introduced);
-            }
-            List<String> where = ix.values(group, "WHERE");
-            if (!where.isEmpty()) sql.append("WHERE ").append(String.join(" AND ", where)).append('\n');
-            sql.append("GROUP BY ").append(String.join(", ", groupColumns)).append('\n');
-            List<String> having = new ArrayList<>();
-            for (String property : ix.values(group, "HAVING")) having.add(propertyExpressions.get(property));
-            if (!having.isEmpty()) sql.append("HAVING ").append(String.join(" AND ", having)).append('\n');
-            List<String> order = new ArrayList<>();
-            for (String value : ix.values(group, "ORDER_BY")) {
-                order.add(propertyExpressions.getOrDefault(value, value));
-            }
-            if (!order.isEmpty()) sql.append("ORDER BY ").append(String.join(", ", order)).append('\n');
-            sql.append(";\n");
-        }
-        return sql.toString();
-    }
+                03 VALIDATE STRUCTURE
+                   Confirmed declarations, fields, keys, and references satisfy their schema contracts.
 
-    private static void export(Path root, Path source, Path output, Compilation compilation)
-            throws IOException {
-        LinkedHashMap<String, byte[]> originals = new LinkedHashMap<>();
-        originals.put("ORIGINAL/" + upper(source.getFileName().toString()), Files.readAllBytes(source));
-        originals.put("ORIGINAL/" + upper(compilation.specPath.getFileName().toString()),
-                Files.readAllBytes(compilation.specPath));
-        LinkedHashMap<String, byte[]> entries = new LinkedHashMap<>();
-        entries.put("MANIFEST.TXT", ("MILESTONE 2004\nLANGUAGE_VERSION "
-                + compilation.languageVersion + "\nMODEL "
-                + upper(source.getFileName().toString()) + "\nSPEC "
-                + upper(compilation.specPath.getFileName().toString()) + "\nASSERTIONS "
-                + compilation.combined.assertions.size() + "\nSQL_DIALECT POSTGRESQL\n")
-                .getBytes(StandardCharsets.UTF_8));
-        entries.put("ASSERTIONS.TSV", render(compilation.combined.assertions).getBytes(StandardCharsets.UTF_8));
-        entries.put("SQL/POSTGRESQL.SQL", emitPostgresSql(compilation).getBytes(StandardCharsets.UTF_8));
-        entries.put("SCHEMA/MODEL-SCHEMA.TSV", Files.readAllBytes(root.resolve("schema/model-schema.tsv")));
-        entries.put("SCHEMA/SPEC-SCHEMA.TSV", Files.readAllBytes(root.resolve("schema/spec-schema.tsv")));
-        entries.put("SOURCE/" + upper(source.getFileName().toString()), Files.readAllBytes(source));
-        entries.put("SOURCE/" + upper(compilation.specPath.getFileName().toString()),
-                Files.readAllBytes(compilation.specPath));
-        entries.put("SOURCE/ORIGINAL-INPUT.ZIP", zip(originals));
-        Path parent = output.toAbsolutePath().getParent();
-        if (parent != null) Files.createDirectories(parent);
-        Files.write(output, zip(entries));
-    }
+                04 COMPILE ASSERTIONS
+                   Compiled the specification and model into canonical assertions.
 
-    private static byte[] zip(Map<String, byte[]> entries) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
-            for (Map.Entry<String, byte[]> entry : entries.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey()).toList()) {
-                ZipEntry zipEntry = new ZipEntry(entry.getKey());
-                zipEntry.setTimeLocal(ZIP_TIME);
-                zip.putNextEntry(zipEntry);
-                zip.write(entry.getValue());
-                zip.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
+                05 RESOLVE GROUPS
+                   Resolved FROM, JOIN, WHERE, GROUP_BY, HAVING, and ORDER_BY.
+
+                06 PROVE GRAIN
+                   Verified primary-key grain, functional dependencies, join direction, and aggregate fanout safety.
+
+                07 VALIDATE PROPERTIES
+                   Verified property references, operation signatures, input types, and output types.
+
+                08 COMPLETE
+                   Model is valid.
+                   Published %d canonical assertions.
+                """.formatted(compilation.combined.assertions.size());
     }
 
     private static Set<String> splitSet(String value, Location location) {
@@ -985,7 +826,7 @@ public final class Compiler {
         }
     }
 
-    private static String identifier(String value, String role, Location location) {
+    static String identifier(String value, String role, Location location) {
         String normalized = upper(value);
         requireIdentifier(normalized, role, location);
         return normalized;
@@ -1005,11 +846,11 @@ public final class Compiler {
         return error(code, assertion.location, message);
     }
 
-    private static ModelError error(String code, Location location, String message) {
+    static ModelError error(String code, Location location, String message) {
         return new ModelError(code, location.prefix() + message);
     }
 
-    private static String upper(String value) {
+    static String upper(String value) {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 }

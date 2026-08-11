@@ -41,14 +41,21 @@ public class Build {
         require(javac.run(null, System.out, System.err, compileArgs.toArray(String[]::new)) == 0,
                 "Compilation failed");
 
-        if (args.length == 2 && args[0].equals("--manifest")) {
-            runManifest(root, Path.of(args[1]));
+        boolean explainManifest = args.length == 3 && args[0].equals("--manifest") && args[2].equals("--explain");
+        if ((args.length == 2 && args[0].equals("--manifest")) || explainManifest) {
+            runManifest(root, Path.of(args[1]), explainManifest);
             return;
         }
         if (args.length != 0) {
-            throw new IllegalArgumentException("Usage: java TestRunner.java [--manifest PACKAGE_MANIFEST]");
+            throw new IllegalArgumentException("Usage: java TestRunner.java [--manifest PACKAGE_MANIFEST [--explain]]");
         }
 
+        // Architecture: the join/grain proof is the compiler's semantic kernel.
+        Run joinProof = runMain(root, "compiler.JoinProofTest");
+        require(joinProof.exit == 0 && joinProof.output.equals("JoinProofTest passed\n"),
+                "Join proof kernel failed:\n" + joinProof.output);
+
+        // Contract: executable schemas and their negative cases.
         int conformance = 0;
         Run validProfile = run(root, Map.of(), "validate_profile", "schema/model-schema.tsv");
         require(validProfile.exit == 0 && validProfile.output.startsWith("VALID "),
@@ -107,6 +114,7 @@ public class Build {
             conformance++;
         }
 
+        // Contract: the complete compiler pipeline, SQL emission, and export.
         Run valid = run(root, Map.of(), "validate", "examples/customer-revenue.model");
         require(valid.exit == 0, valid.output);
         Run first = run(root, Map.of(), "compile", "examples/customer-revenue.model");
@@ -140,6 +148,10 @@ public class Build {
                 """;
         require(sql.exit == 0 && sql.output.equals(expectedSql),
                 "PostgreSQL SQL generation is not deterministic or has unexpected output:\n" + sql.output);
+        Run explanation = run(root, Map.of(), "explain", "examples/customer-revenue.model");
+        require(explanation.exit == 0 && explanation.output.contains("06 PROVE GRAIN")
+                        && explanation.output.contains("Published 60 canonical assertions."),
+                "Compiler explanation does not describe the semantic pipeline:\n" + explanation.output);
         Run unsafeSql = run(root, Map.of(), "emit_sql",
                 "package/fanout-safe-revenue/unsafe-revenue-with-tickets.model");
         require(unsafeSql.exit == 2 && unsafeSql.output.contains("INVALID AGGREGATE_FANOUT "),
@@ -170,6 +182,7 @@ public class Build {
         packageProject(root, project);
 
         System.out.println("Clean build passed");
+        System.out.println("Architecture checks passed: parser, join proof, SQL emitter, export writer");
         System.out.println(conformance + " conformance cases passed");
         System.out.println(valid.output.trim());
         System.out.println("Deterministic cross-time-zone export: " + canonical);
@@ -190,7 +203,19 @@ public class Build {
         return new Run(p.waitFor(), output);
     }
 
-    static void runManifest(Path root, Path manifest) throws Exception {
+    static Run runMain(Path root, String mainClass, String... args) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.add("-cp");
+        command.add(root.resolve("out").toString());
+        command.add(mainClass);
+        command.addAll(List.of(args));
+        Process p = new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true).start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        return new Run(p.waitFor(), output);
+    }
+
+    static void runManifest(Path root, Path manifest, boolean explain) throws Exception {
         Path absoluteManifest = manifest.toAbsolutePath().normalize();
         require(Files.isRegularFile(absoluteManifest), "Manifest not found: " + manifest);
         List<String> rows = Files.readAllLines(absoluteManifest, StandardCharsets.UTF_8);
@@ -203,6 +228,7 @@ public class Build {
         copyDirectory(packageRoot, packageOutput);
         int cases = 0;
         List<String> validatedModels = new ArrayList<>();
+        List<String> validModels = new ArrayList<>();
         for (int i = 1; i < rows.size(); i++) {
             if (rows.get(i).isBlank()) continue;
             String[] row = rows.get(i).split("\\t", -1);
@@ -228,6 +254,16 @@ public class Build {
                 Run export = run(root, Map.of(), "export", model.toString(),
                         packageOutput.resolve(modelName + ".export.zip").toString());
                 require(export.exit == 0, "Could not export " + row[0] + "\n" + export.output);
+                validModels.add(row[0]);
+                if (explain) {
+                    Run trace = run(root, Map.of(), "explain", model.toString());
+                    require(trace.exit == 0, "Could not explain " + row[0] + "\n" + trace.output);
+                    System.out.println("\nValidation trace: " + row[0]);
+                    System.out.print(trace.output);
+                }
+            } else if (explain) {
+                System.out.println("\nValidation stopped: " + row[0]);
+                System.out.print(result.output);
             }
             cases++;
             validatedModels.add(row[0]);
@@ -239,8 +275,8 @@ public class Build {
         System.out.println("Checked: " + String.join(", ", validatedModels));
         System.out.println("The model can use its local schema and specification files successfully.");
         System.out.println("Package export directory: " + packageOutput);
-        if (cases == 1 && rows.get(1).split("\\t", -1)[1].equals("VALID")) {
-            String modelName = validatedModels.get(0).replaceFirst("\\.model$", "");
+        for (String validModel : validModels) {
+            String modelName = validModel.replaceFirst("\\.model$", "");
             System.out.println("Compiled assertions: " + packageOutput.resolve(modelName + ".assertions.tsv"));
             System.out.println("Generated PostgreSQL SQL: " + packageOutput.resolve(modelName + ".postgresql.sql"));
             System.out.println("Export ZIP: " + packageOutput.resolve(modelName + ".export.zip"));

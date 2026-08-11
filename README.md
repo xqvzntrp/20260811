@@ -109,6 +109,15 @@ java -cp out compiler.Compiler export examples/customer-revenue.model dist/custo
 passes structural and aggregate-grain validation. Give it an optional output
 path to write the SQL to a file.
 
+## Architecture
+
+The compiler is organized around named stages: `ModelParser` turns source blocks
+into assertions; the executable schemas and specification build the catalog;
+`JoinProof` proves row-grain and aggregate safety; `PostgresEmitter` produces
+SQL only for validated models; and `ExportWriter` creates the deterministic ZIP.
+`java TestRunner.java` checks this semantic kernel before running the broader
+conformance and export contracts.
+
 ## Model packages
 
 A standalone model package contains its model, structural specification, schema
@@ -116,6 +125,13 @@ contracts, version marker, and a test manifest. Run the bundled Commerce package
 
 ```sh
 java TestRunner.java --manifest package/commerce/manifest.tsv
+```
+
+Add `--explain` to show the numbered validation pipeline for each model. An
+expected-invalid model reports the diagnostic where validation stopped:
+
+```sh
+java TestRunner.java --manifest package/commerce/manifest.tsv --explain
 ```
 
 The manifest columns are `MODEL`, `EXPECTED`, and `CODE`. Model paths are
