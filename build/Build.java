@@ -54,6 +54,9 @@ public class Build {
         Run joinProof = runMain(root, "compiler.JoinProofTest");
         require(joinProof.exit == 0 && joinProof.output.equals("JoinProofTest passed\n"),
                 "Join proof kernel failed:\n" + joinProof.output);
+        Run joinProofCorpus = runMain(root, "compiler.JoinProofCorpusTest");
+        require(joinProofCorpus.exit == 0 && joinProofCorpus.output.equals("JoinProofCorpusTest passed: 5 cases\n"),
+                "Join proof corpus failed:\n" + joinProofCorpus.output);
 
         // Contract: executable schemas and their negative cases.
         int conformance = 0;
@@ -182,7 +185,7 @@ public class Build {
         packageProject(root, project);
 
         System.out.println("Clean build passed");
-        System.out.println("Architecture checks passed: parser, join proof, SQL emitter, export writer");
+        System.out.println("Architecture checks passed: parser, join proof corpus, SQL emitter, export writer");
         System.out.println(conformance + " conformance cases passed");
         System.out.println(valid.output.trim());
         System.out.println("Deterministic cross-time-zone export: " + canonical);

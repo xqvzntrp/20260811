@@ -5,6 +5,9 @@ valid-reverse-expansion.model	VALID	-
 valid-forward-dimension-property.model	VALID	-
 valid-one-to-one-reverse.model	VALID	-
 valid-ordered-min-max.model	VALID	-
+proof-safe-revenue.model	VALID	-
+proof-unsafe-branch-fanout.model	INVALID	AGGREGATE_FANOUT
+proof-boundary-min-dimension.model	INVALID	AGGREGATE_FANOUT
 invalid-missing-group-by.model	INVALID	SCHEMA_CARDINALITY
 invalid-ungrouped-input.model	INVALID	UNGROUPED_INPUT
 invalid-unsafe-join.model	INVALID	SPEC_VALUE_OUTSIDE_DOMAIN

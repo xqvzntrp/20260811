@@ -186,6 +186,14 @@ Boolean is not ordered. Therefore `MIN(Boolean)` and `MAX(Boolean)` fail with
 
 ## 4. Directional join proof
 
+### Soundness invariant
+
+Every accepted property is semantically valid at its declared grain under the
+relationships and operations modeled by the language. The compiler may reject
+models whose safety cannot yet be established. This is deliberate: soundness
+("accepted implies safe") takes priority over completeness (accepting every
+safe model).
+
 A foreign key is declared from its referencing table to one referenced row:
 
 ```text

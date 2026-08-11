@@ -118,6 +118,11 @@ SQL only for validated models; and `ExportWriter` creates the deterministic ZIP.
 `java TestRunner.java` checks this semantic kernel before running the broader
 conformance and export contracts.
 
+`proof/join-proof-corpus.tsv` records the expected effective row keys,
+functional-dependency closure, and uncontrolled keys for safe, unsafe, and
+intentionally incomplete boundary cases. The compiler is sound before it is
+complete: it may reject a model whose safety is not yet provable.
+
 ## Model packages
 
 A standalone model package contains its model, structural specification, schema

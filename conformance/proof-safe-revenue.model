@@ -1,0 +1,10 @@
++ PACKAGE ProofSafeRevenue
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/FANOUT.SPEC.TSV
++ GROUP RevenueByCustomer
+    FROM Customer
+    JOIN OrderCustomer
+    GROUP_BY CustomerKey
++ PROPERTY Revenue
+    AT RevenueByCustomer
+    AS SUM(OrderRow.Amount)

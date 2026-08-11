@@ -1,0 +1,13 @@
+// MIN is duplicate-insensitive here, but the current general aggregate proof
+// intentionally rejects it after branch expansion rather than special-casing it.
++ PACKAGE ProofBoundaryMinDimension
+    LANGUAGE_VERSION 2004.0.0
+    SPEC_FILE conformance/FANOUT.SPEC.TSV
++ GROUP CustomerActivity
+    FROM Customer
+    JOIN OrderCustomer
+    JOIN TicketCustomer
+    GROUP_BY CustomerKey
++ PROPERTY LowestCreditLimit
+    AT CustomerActivity
+    AS MIN(Customer.CreditLimit)
